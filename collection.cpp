@@ -1,8 +1,15 @@
 #include "collection.h"
 #include "jsonlistmodel.h"
 
+namespace com { namespace cutehacks { namespace gel {
+
 Collection::Collection(QObject *parent) : QSortFilterProxyModel(parent)
 {
+    connect(this, SIGNAL(rowsRemoved(QModelIndex,int,int)),
+            this, SLOT(emitCountChanged()));
+    connect(this, SIGNAL(rowsInserted(QModelIndex,int,int)),
+            this, SLOT(emitCountChanged()));
+
     sort(0);
 }
 
@@ -65,20 +72,26 @@ void Collection::rolesChanged()
     updateModel();
 }
 
+void Collection::emitCountChanged()
+{
+    emit countChanged(rowCount());
+}
+
 void Collection::updateModel()
 {
     if (model() && m_comparator.isString()) {
         int role = model()->getRole(m_comparator.toString());
         setSortRole(role);
     }
-//    sort(0);
 }
 
 
 bool Collection::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
 {
     if (m_filter.isCallable()) {
-        QJSValue result = m_filter.call(QJSValueList() << model()->at(source_row));
+        QJSValue result = m_filter.call(QJSValueList()
+                                        << model()->at(source_row)
+                                        << source_row);
         return result.toBool();
     } else {
         return QSortFilterProxyModel::filterAcceptsRow(source_row, source_parent);
@@ -87,16 +100,6 @@ bool Collection::filterAcceptsRow(int source_row, const QModelIndex &source_pare
 
 bool Collection::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
 {
-    /*if (m_comparator.isString()) {
-        QString compare = m_comparator.toString();
-        QJSValue left = model()->at(source_left.row());
-        QJSValue right = model()->at(source_right.row());
-
-        // TODO: Avoid variant?
-        QVariant leftVal = left.property(compare).toVariant();
-        QVariant rightVal = right.property(compare).toVariant();
-        return leftVal < rightVal;
-    } else */
     if (m_comparator.isCallable()) {
         QJSValue left = model()->at(source_left.row());
         QJSValue right = model()->at(source_right.row());
@@ -111,7 +114,26 @@ QJSValue Collection::at(int row) const
 {
     QModelIndex m = index(row, 0);
     QModelIndex source = mapToSource(m);
-    JsonListModel *jsonModel = qobject_cast<JsonListModel*>(sourceModel());
-    return jsonModel->at(source.row());
+    return model()->at(source.row());
 }
 
+void Collection::reSort()
+{
+    if (dynamicSortFilter())
+    {
+        // Workaround: If dynamic_sortfilter == true, sort(0) will not (always)
+        // result in d->sort() being called, but setDynamicSortFilter(true) will.
+        setDynamicSortFilter(true);
+    }
+    else
+    {
+        sort(0);
+    }
+}
+
+void Collection::reFilter()
+{
+    invalidateFilter();
+}
+
+} } }

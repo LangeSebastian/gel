@@ -1,5 +1,7 @@
 #include <QDebug>
 #include <QtCore/QReadWriteLock>
+#include <QtQml/qqml.h>
+#include <QtQml/QQmlEngine>
 #include "jsonlistmodel.h"
 
 #if QT_VERSION < QT_VERSION_CHECK(5, 6, 0)
@@ -9,6 +11,8 @@
 typedef QJSValueIterator JSValueIterator;
 #endif
 
+namespace com { namespace cutehacks { namespace gel {
+
 static const int BASE_ROLE = Qt::UserRole + 1;
 
 JsonListModel::JsonListModel(QObject *parent) :
@@ -17,6 +21,10 @@ JsonListModel::JsonListModel(QObject *parent) :
     m_idAttribute("id"),
     m_dynamicRoles(false)
 {
+    connect(this, SIGNAL(rowsRemoved(QModelIndex,int,int)),
+            this, SLOT(emitCountChanged()));
+    connect(this, SIGNAL(rowsInserted(QModelIndex,int,int)),
+            this, SLOT(emitCountChanged()));
 }
 
 bool JsonListModel::dynamicRoles() const
@@ -52,6 +60,23 @@ bool JsonListModel::addRole(const QString &role)
     return true;
 }
 
+QJSValue JsonListModel::clone(QQmlEngine *engine, const QJSValue &src) const
+{
+    if (!src.isObject())
+        return src;
+
+    QJSValue dst = engine->newObject();
+
+    JSValueIterator it(src);
+    while (it.next()) {
+        QJSValue v = it.value();
+        if (v.isObject())
+            v = clone(engine, v);
+        dst.setProperty(it.name(), v);
+    }
+    return dst;
+}
+
 bool JsonListModel::extractRoles(const QJSValue &item,
                                  const QString &prefix = QString())
 {
@@ -75,6 +100,11 @@ bool JsonListModel::extractRoles(const QJSValue &item,
     return rolesAdded;
 }
 
+void JsonListModel::emitCountChanged()
+{
+    emit countChanged(rowCount());
+}
+
 int JsonListModel::addItem(const QJSValue &item)
 {
     int row = -1;
@@ -84,7 +114,7 @@ int JsonListModel::addItem(const QJSValue &item)
         id = item.toString();
     } else if (item.isObject()) {
         if (!item.hasProperty(m_idAttribute)) {
-            qWarning() << QString("Object does not have a %1 property").arg(m_idAttribute);
+            qWarning("Object does not have a %s property", qPrintable(m_idAttribute));
             return row;
         }
         id = item.property(m_idAttribute).toString();
@@ -191,7 +221,7 @@ void JsonListModel::remove(const QJSValue &item)
         } else if (item.hasProperty(m_idAttribute)){
             key = item.property(m_idAttribute).toString();
         } else {
-            qWarning() << "Unable to remove item";
+            qWarning("Unable to remove item");
             return;
         }
 
@@ -204,6 +234,7 @@ void JsonListModel::remove(const QJSValue &item)
         m_keys.removeAt(index);
         m_items.remove(key);
     }
+    emit dataChanged(createIndex(index, 0), createIndex(m_keys.count() - 1, 0));
     beginRemoveRows(QModelIndex(), index, index);
     endRemoveRows();
 }
@@ -236,13 +267,30 @@ QJSValue JsonListModel::get(const QJSValue &id) const
     return m_items[key];
 }
 
+QJSValue JsonListModel::asArray(bool deepCopy) const
+{
+    QQmlEngine *engine = qmlEngine(this);
+    QReadLocker readLock(m_lock);
+    QJSValue array = engine->newArray(m_keys.length());
+    QList<QString>::const_iterator it = m_keys.cbegin();
+    int i = 0;
+    if (deepCopy) {
+        while (it != m_keys.cend())
+            array.setProperty(i++, clone(engine, m_items.value(*it++)));
+    } else {
+        while (it != m_keys.cend())
+            array.setProperty(i++, m_items.value(*it++));
+    }
+    return array;
+}
+
 QModelIndex JsonListModel::index(int row, int column, const QModelIndex &) const
 {
     QReadLocker readLock(m_lock);
     if (row >= 0 && row < m_keys.count()) {
         return createIndex(row, column);
     } else {
-        qWarning() << "Out of bounds";
+        qWarning("Out of bounds");
     }
     return QModelIndex();
 }
@@ -268,7 +316,7 @@ QVariant JsonListModel::data(const QModelIndex &index, int role) const
     QReadLocker readLock(m_lock);
     int row = index.row();
     if (row < 0 || row > m_keys.count()) {
-        qWarning() << "Out of bounds";
+        qWarning("Out of bounds");
         return QVariant();
     }
 
@@ -354,3 +402,4 @@ bool JsonListModel::setData(const QModelIndex &, const QVariant &, int)
     return false;
 }
 
+} } }

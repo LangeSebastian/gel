@@ -117,9 +117,18 @@ Return the jsobject at the index specified by the number.
 
 Return the jsobject that has the id specified by 'id'.
 
+### asArray([deepCopy : bool]) : array
+
+Creates a new array containing the items in the model. If objects are
+stored in the model, then the default behavior is that the array contains
+references to the objects in the model such that modifications to the array
+will affect the model (though no signals are emitted). If the value of 
+`deepCopy` is set to `true` then the objects are cloned before being
+added to the array.
+
 ## Collection
 
-An item for sorting an filtering a JsonListModel. The Collection itself does not
+An item for sorting and filtering a JsonListModel. The Collection itself does not
 store any data, but rather proxies the data stored inside the source model.
 
 ### model : JsonListModel
@@ -156,13 +165,38 @@ function lessThan(a, b) {
 
 ### filter : function
 
-A function indicating which items should be included in th resulting collection. The
+A function indicating which items should be included in the resulting collection. The
 function should return true for items that should be included; otherwise false.
+
+The signature of the filter function is:
+
+```
+    function(item, index) {
+        return true; // if item should be included
+    }
+```
+
 
 ### at(index: number) : function
 
 Return the jsobject at the index specified by the number. If Collection is sorted or filtered, then
 the index here refers to the index in the Collection *not* the JsonListModel.
+
+### reSort() : function
+
+Trigger sorting the collection again.
+
+**NOTE** Calling this function is *not* required if data within the model itself has changed
+(re-sorting will be conducted automatically in that case). You want to call this function if
+external data has been updated, e.g. you sort a model by distance and the current position
+of the user has changed.
+
+### reFilter() : function
+
+Trigger refiltering the collection.
+
+**NOTE** Same as reSort(), this function is not required if the data within the model itself
+has changed.
 
 ### descendingSort : property bool: false
 

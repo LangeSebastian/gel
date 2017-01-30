@@ -7,6 +7,9 @@
 #include <QtQml/QJSValue>
 
 class QReadWriteLock;
+class QQmlEngine;
+
+namespace com { namespace cutehacks { namespace gel {
 
 class JsonListModel : public QAbstractItemModel
 {
@@ -15,6 +18,7 @@ class JsonListModel : public QAbstractItemModel
     Q_PROPERTY(QString idAttribute READ idAttribute WRITE setIdAttribute NOTIFY idAttributeChanged)
     Q_PROPERTY(bool dynamicRoles READ dynamicRoles WRITE setDynamicRoles NOTIFY dynamicRolesChanged)
     Q_PROPERTY(QJSValue attachedProperties READ attachedProperties WRITE setAttachedProperties NOTIFY attachedPropertiesChanged)
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
     JsonListModel(QObject *parent = 0);
@@ -24,11 +28,12 @@ public:
     Q_INVOKABLE void clear();
     Q_INVOKABLE QJSValue at(int) const;
     Q_INVOKABLE QJSValue get(const QJSValue&) const;
+    Q_INVOKABLE QJSValue asArray(bool deepCopy = false) const;
 
-    QModelIndex index(int row, int column, const QModelIndex &parent) const;
+    QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const;
     QModelIndex parent(const QModelIndex &child) const;
-    int rowCount(const QModelIndex &parent) const;
-    int columnCount(const QModelIndex &parent) const;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const;
+    int columnCount(const QModelIndex &parent= QModelIndex()) const;
     QVariant data(const QModelIndex &index, int role) const;
     bool setData(const QModelIndex &index, const QVariant &value, int role);
     QHash<int, QByteArray> roleNames() const;
@@ -37,6 +42,8 @@ public:
     bool dynamicRoles() const;
     void setDynamicRoles(bool dynamicRoles);
     QJSValue attachedProperties() const;
+
+    inline int count() const { return rowCount(); }
 
 protected:
     int addItem(const QJSValue &item);
@@ -47,14 +54,19 @@ public slots:
     void setIdAttribute(QString idAttribute);
     void setAttachedProperties(QJSValue attachedProperties);
 
+private slots:
+    void emitCountChanged();
+
 signals:
     void idAttributeChanged(QString idAttribute);
     void rolesChanged();
     void dynamicRolesChanged();
     void attachedPropertiesChanged(QJSValue attachedProperties);
+    void countChanged(int count);
 
 private:
     bool addRole(const QString &string);
+    QJSValue clone(QQmlEngine *, const QJSValue&) const;
 
     mutable QReadWriteLock *m_lock;
     QHash<QString, QJSValue> m_items;
@@ -65,5 +77,7 @@ private:
     bool m_dynamicRoles;
     QJSValue m_attachedProperties;
 };
+
+} } }
 
 #endif // JSONLISTMODEL_H
